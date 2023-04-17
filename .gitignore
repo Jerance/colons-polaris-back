@@ -1,0 +1,41 @@
+# Python
+*.py[cod]
+__pycache__/
+
+# Environnement virtuel
+venv/
+env/
+
+# Packages
+dist/
+build/
+*.egg-info/
+
+# Fichiers générés
+*.log
+*.pot
+*.pyc
+*.swp
+*.sql
+*.sqlite
+*.coverage
+htmlcov/
+
+# Fichiers d'éditeur
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+*.bak
+
+# Fichier de configuration
+database/.env
+database/.env.local
+database/.env.test
+database/.env.prod
+
+# Autres
+node_modules/
+yarn.lock
+package-lock.json
+.DS_Store
