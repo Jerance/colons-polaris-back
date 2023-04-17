@@ -1,4 +1,4 @@
-# **template-project-fastapi**
+# **Colons de Polaris Backend**
 
 ## **Installation :**
 1. Cloner le dépôt.

@@ -1,11 +1,28 @@
-#Imports FASTAPI
-from fastapi import FastAPI
+# Imports FASTAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 
-#Imports all routes
-#from routes.index
+import uvicorn
+import asyncio
+import websockets
+
+# Imports all routes
+# from routes.index
 
 app = FastAPI()
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    while True:
+        try:
+            message = await websocket.receive_text()
+            print(f"Message reçu : {message}")
+            await websocket.send_text(f"Vous avez envoyé : {message}")
+        except websockets.exceptions.ConnectionClosedOK:
+            print("Connexion fermée")
+            break
 
 origins = [
     "http://localhost.tiangolo.com",
@@ -21,3 +38,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+if __name__ == "__main__":
+    asyncio.get_event_loop().run_until_complete(websockets.serve(websocket_endpoint, "localhost", 8000))
+    uvicorn.run(app, host="localhost", port=8000)
