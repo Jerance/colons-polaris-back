@@ -1,6 +1,7 @@
 # Imports FASTAPI
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 import uvicorn
 import asyncio
@@ -10,6 +11,9 @@ import websockets
 # from routes.index
 
 app = FastAPI()
+
+# Import Firebase
+from database.firebase import db, bucket
 
 
 @app.websocket("/ws")
@@ -38,6 +42,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Route pour tester la connexion à Firestore
+@app.get("/test-firestore")
+async def test_firestore():
+    doc_ref = db.collection("tes").document("tet")
+    if doc_ref.get().exists:
+        return {"message": "Document trouvé !"}
+    else:
+        return JSONResponse(status_code=404, content={"message": "Document non trouvé."})
+
+# Route pour tester la connexion à Firebase Storage
+@app.get("/test-storage")
+async def test_storage():
+    blob = bucket.blob("test.txt")
+    if blob.exists():
+        return {"message": "Bucket trouvé !"}
+    else:
+        return JSONResponse(status_code=404, content={"message": "Bucket non trouvé."})
+
 
 if __name__ == "__main__":
     asyncio.get_event_loop().run_until_complete(websockets.serve(websocket_endpoint, "localhost", 8000))

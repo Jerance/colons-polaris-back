@@ -33,6 +33,7 @@ database/.env
 database/.env.local
 database/.env.test
 database/.env.prod
+database/credentials.json
 
 # Autres
 node_modules/
