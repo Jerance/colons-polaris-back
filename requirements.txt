@@ -6,3 +6,5 @@ pydantic==1.10.2
 pytest==7.3.1
 websockets==10.3
 asyncio==3.4.3
+firebase_admin==6.1.0
+google-cloud-storage==2.8.0
