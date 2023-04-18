@@ -10,11 +10,12 @@ import websockets
 # Imports all routes
 # from routes.index
 
-app = FastAPI()
+from database import config
 
 # Import Firebase
 from database.firebase import db, bucket
 
+app = FastAPI()
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -33,6 +34,7 @@ origins = [
     "https://localhost.tiangolo.com",
     "http://localhost",
     "http://localhost:8080",
+    config.CLIENT_URL
 ]
 
 app.add_middleware(
