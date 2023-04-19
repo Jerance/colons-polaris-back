@@ -29,13 +29,7 @@ async def websocket_endpoint(websocket: WebSocket):
             print("Connexion fermée")
             break
 
-origins = [
-    "http://localhost.tiangolo.com",
-    "https://localhost.tiangolo.com",
-    "http://localhost",
-    "http://localhost:8080",
-    config.CLIENT_URL
-]
+origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
