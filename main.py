@@ -8,7 +8,7 @@ import asyncio
 import websockets
 
 # Imports all routes
-from routes import player
+from routes import player, map
 
 from database import config
 
@@ -16,6 +16,7 @@ from database import config
 from database.firebase import db, bucket
 
 app = FastAPI()
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -29,13 +30,7 @@ async def websocket_endpoint(websocket: WebSocket):
             print("Connexion fermée")
             break
 
-origins = [
-    "http://localhost.tiangolo.com",
-    "https://localhost.tiangolo.com",
-    "http://localhost",
-    "http://localhost:8080",
-    config.CLIENT_URL
-]
+origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -46,6 +41,8 @@ app.add_middleware(
 )
 
 # Route pour tester la connexion à Firestore
+
+
 @app.get("/test-firestore")
 async def test_firestore():
     doc_ref = db.collection("tes").document("tet")
@@ -55,6 +52,8 @@ async def test_firestore():
         return JSONResponse(status_code=404, content={"message": "Document non trouvé."})
 
 # Route pour tester la connexion à Firebase Storage
+
+
 @app.get("/test-storage")
 async def test_storage():
     blob = bucket.blob("test.txt")
@@ -65,7 +64,9 @@ async def test_storage():
 
 
 if __name__ == "__main__":
-    asyncio.get_event_loop().run_until_complete(websockets.serve(websocket_endpoint, "localhost", 8000))
+    asyncio.get_event_loop().run_until_complete(
+        websockets.serve(websocket_endpoint, "localhost", 8000))
     uvicorn.run(app, host="localhost", port=8000)
 
 app.include_router(player.router)
+app.include_router(map.router)
