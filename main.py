@@ -8,7 +8,7 @@ import asyncio
 import websockets
 
 # Imports all routes
-from routes import player
+from routes import roomgame
 
 from database import config
 
@@ -68,4 +68,4 @@ if __name__ == "__main__":
     asyncio.get_event_loop().run_until_complete(websockets.serve(websocket_endpoint, "localhost", 8000))
     uvicorn.run(app, host="localhost", port=8000)
 
-app.include_router(player.router)
+app.include_router(roomgame.router)
