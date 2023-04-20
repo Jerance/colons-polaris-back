@@ -1,9 +1,17 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, WebSocket
 from database import firebase
 from google.cloud import firestore
 
 router = APIRouter()
 db = firebase.db
+
+@router.websocket("/gameroom")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    while True:
+        data = await websocket.receive_text()
+        await websocket.send_text(f"Message text was: {data}")
+        print(data)
 
 
 @router.post("/create/game_room/{player_name}/{token_game_room}")
