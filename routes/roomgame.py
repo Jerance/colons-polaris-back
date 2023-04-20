@@ -42,3 +42,13 @@ async def join_room(player_name: str, token_game_room: str):
 
     return {"message": f"{player_name} has joined the game room {room_id}"}
 
+
+@router.delete("/game_room/{room_id}")
+async def delete_room_by_id(room_id: str):
+    room_ref = db.collection("game_room").document(room_id)
+    room = room_ref.get()
+    if room.exists:
+        room_ref.delete()
+        return {"message": "Room deleted successfully"}
+    else:
+        return {"message": "Room not found"}
