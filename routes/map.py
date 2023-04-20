@@ -22,33 +22,47 @@ def gridToPixel(gridX, gridY, radius, p={}, color=None):
     p["y"] = (gridY + radius + 1) * GRID_Y_SPACE + gridX * GRID_Y_OFFSET
     return p
 
+def distance(xa, ya, xb=0, yb=0):
+    dx = xa - xb
+    dy = ya - yb
+    same_sign = dx * dy > 0
+    dx = abs(dx)
+    dy = abs(dy)
+    if same_sign:
+        return dx + dy
+    else:
+        return max(dx, dy)
+
 
 @router.post("/map/generate/{size}")
 async def map_generate(size: int):
     MAP_SIZE = size
-    MAP_WIDTH = (1.75 * MAP_SIZE + 2) * round(GRID_Y_SPACE)
-    MAP_HEIGHT = (2.05 * MAP_SIZE + 2) * round(GRID_Y_SPACE)
 
-    passed = 0
-    non_passsed = 0
     map = []
     center = P2(0, 0)
     for y in range(MAP_SIZE, -MAP_SIZE-1, -1):
         for x in range(-MAP_SIZE, MAP_SIZE+1):
-            non_passsed += 1
             if (x * y > 0 and abs(x) + abs(y) > MAP_SIZE):
-                passed += 1
+                pass
             else:
                 random_number = random.randint(1, 100)
                 type = "void"
                 planet_type = ""
                 rand_size = 0
+                asteroids = []
 
                 if (x == 0 and y == 0):
+                    print("sun")
                     type = "sun"
-
-                if (random_number > 95):
+                elif (distance(x, y) < 5):
+                    pass
+                elif (random_number > 95):
                     type = "asteroid"
+                    number = random.randint(4, 7)
+                    for i in range(0, number):
+                        posX = random.randint(0, 10)
+                        posY = random.randint(0, 10)
+                        asteroids.append({"x" : posX, "y" : posY})
                 elif (random_number > 85):
                     type = "planet"
                     planet_random = random.randint(1, 10)
@@ -66,7 +80,8 @@ async def map_generate(size: int):
                     "type": type,
                     "planet_type": planet_type,
                     "coord": P2(x, y),
-                    "size_variation": rand_size
+                    "size_variation": rand_size,
+                    "asteroids" : asteroids
                 })
 
     map_doc = db.collection("map").document()
