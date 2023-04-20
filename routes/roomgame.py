@@ -21,6 +21,16 @@ async def create_room(player_name: str, token_game_room: str):
         "token_game_room": token_game_room,
     }
 
+@router.get("/game_room/{room_id}")
+async def get_room_by_id(room_id: str):
+    room_ref = db.collection("game_room").document(room_id)
+    room = room_ref.get()
+    if room.exists:
+        return room.to_dict()
+    else:
+        return {"message": "Room not found"}
+
+
 @router.post("/join/game_room/{player_name}/{token_game_room}")
 async def join_room(player_name: str, token_game_room: str):
     game_room_ref = db.collection("game_room").where("token_game_room", "==", token_game_room).get()
