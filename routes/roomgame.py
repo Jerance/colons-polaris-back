@@ -18,35 +18,33 @@ async def broadcast(room_id: str, message: str):
 @router.websocket("/gameroom/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str):
     await websocket.accept()
-    
-    if room_id not in room_ws_connections:
-        room_ws_connections[room_id] = [websocket]
-    else:
-        room_ws_connections[room_id].append(websocket)
-        
+
     try:
         while True:
             data = await websocket.receive_text()
-            await broadcast(room_id, f"Message received from {room_id}: {data}")
-            
+            data_parsed = json.loads(data)
+            print(data_parsed["request"])
+            if "request" in data_parsed and data_parsed["request"] == "/game_room":
+                room_ref = db.collection("game_room").document(data_parsed["GameRoomID"])
+                room_snapshot = room_ref.get()
+                if room_snapshot.exists:
+                    room_data = room_snapshot.to_dict()
+                    await websocket.send_json(room_data)
+                else:
+                    await websocket.send_json({})
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+        await websocket.close()
+
     except WebSocketDisconnect:
-        room_ws_connections[room_id].remove(websocket)
-        await broadcast(room_id, f"WebSocket disconnected from {room_id}")
+        pass
 
 @router.get("/game_room/{room_id}")
 async def get_room_by_id(room_id: str):
     room_ref = db.collection("game_room").document(room_id)
     room = room_ref.get()
     if room.exists:
-        room_dict = room.to_dict()
-        async with websockets.connect(f"ws://localhost:8000/gameroom/{room_id}") as websocket:
-            await websocket.send("start")
-            async for message in websocket:
-                if message == "players_updated":
-                    room_ref = db.collection("game_room").document(room_id)
-                    room_dict["players"] = room_ref.get("players", [])
-                    await websocket.send(json.dumps(room_dict))
-        return room_dict
+        return room.to_dict()
     else:
         return {"message": "Room not found"}
 
