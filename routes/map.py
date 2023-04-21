@@ -100,3 +100,16 @@ async def get_map_by_id(id: str):
             raise HTTPException(status_code=404, detail="Map not found")
     except:
         raise HTTPException(status_code=404, detail="Map not found")
+
+@router.delete("/map/{id}")
+async def delete_map_by_id(id: str):
+    try:
+        doc_ref = db.collection("map").document(id)
+        doc = doc_ref.get()
+        if doc.exists:
+            doc_ref.delete()
+            return {"message": "Map deleted successfully"}
+        else:
+            raise HTTPException(status_code=404, detail="Map not found")
+    except:
+        raise HTTPException(status_code=404, detail="Map not found")
