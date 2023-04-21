@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from database import firebase
 import math
 import random
+import json
 
 router = APIRouter()
 db = firebase.db
@@ -16,11 +17,6 @@ GRID_Y_SPACE = math.cos(math.pi / EDGES) * RADIUS * 2
 GRID_X_SPACE = RADIUS * 2 - EDGE_LEN * 0.5
 GRID_Y_OFFSET = GRID_Y_SPACE * 0.5
 
-
-def gridToPixel(gridX, gridY, radius, p={}, color=None):
-    p["x"] = (gridX + radius + 1) * GRID_X_SPACE
-    p["y"] = (gridY + radius + 1) * GRID_Y_SPACE + gridX * GRID_Y_OFFSET
-    return p
 
 def distance(xa, ya, xb=0, yb=0):
     dx = xa - xb
@@ -52,7 +48,6 @@ async def map_generate(size: int):
                 asteroids = []
 
                 if (x == 0 and y == 0):
-                    print("sun")
                     type = "sun"
                 elif (distance(x, y) < 5):
                     pass
@@ -62,27 +57,28 @@ async def map_generate(size: int):
                     for i in range(0, number):
                         posX = random.randint(0, 10)
                         posY = random.randint(0, 10)
-                        asteroids.append({"x" : posX, "y" : posY})
+                        asteroids.append({"x": posX, "y": posY})
                 elif (random_number > 85):
                     type = "planet"
-                    planet_random = random.randint(1, 10)
+                    planet_random = random.randint(1, 100)
                     rand_size = random.randint(1, 20) - 10
-                    if (planet_random > 9):
+                    if (planet_random > 90):
                         planet_type = "indu"
-                    elif (planet_random > 5):
+                    elif (planet_random > 50):
                         planet_type = "agri"
-                    elif (planet_random > 3):
+                    elif (planet_random > 30):
                         planet_type = "atmo"
                     else:
                         planet_type = "mine"
 
-                map.append({
+                dict = {
                     "type": type,
                     "planet_type": planet_type,
                     "coord": P2(x, y),
                     "size_variation": rand_size,
-                    "asteroids" : asteroids
-                })
+                    "asteroids": asteroids
+                }
+                map.append(json.dumps(dict))
 
     map_doc = db.collection("map").document()
     map_doc.set({
