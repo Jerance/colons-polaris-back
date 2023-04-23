@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, WebSocket
 from database import firebase
 import math
 import random
@@ -30,9 +30,20 @@ def distance(xa, ya, xb=0, yb=0):
         return max(dx, dy)
 
 
-@router.post("/map/generate/{size}")
-async def map_generate(size: int):
+@router.post("/map/generate/{size}/{game_room_id}")
+async def map_generate(size: int, game_room_id: str):
     MAP_SIZE = size
+
+    doc_ref = db.collection("game_room").document(game_room_id)
+    doc = doc_ref.get()
+
+    game_room = doc.to_dict()
+
+    #{'players': [], 'started': False, 'room_game_owner': 'Jerance', 'token_game_room': '8FFoQT2KMkNRwG0'}
+
+    players = game_room["players"]
+    players.append({"name": game_room["room_game_owner"], "number" : 1})
+
 
     map = []
     center = P2(0, 0)
@@ -43,10 +54,8 @@ async def map_generate(size: int):
             else:
                 random_number = random.randint(1, 100)
                 type = "void"
-                planet_type = ""
-                rand_size = 0
+                fill = ""
                 asteroids = []
-
                 if (x == 0 and y == 0):
                     type = "sun"
                 elif (distance(x, y) < 5):
@@ -61,32 +70,58 @@ async def map_generate(size: int):
                 elif (random_number > 85):
                     type = "planet"
                     planet_random = random.randint(1, 100)
-                    rand_size = random.randint(1, 20) - 10
                     if (planet_random > 90):
-                        planet_type = "indu"
+                        fill = "indu"
                     elif (planet_random > 50):
-                        planet_type = "agri"
+                        fill = "agri"
                     elif (planet_random > 30):
-                        planet_type = "atmo"
+                        fill = "atmo"
                     else:
-                        planet_type = "mine"
+                        fill = "mine"
+
+                if(type == "void" and random_number < 5):
+                    if(len(players) > 0):
+                        player = players.pop()
+                        type ="base"
+                        fill = player["number"]
+                        map = []
+                        for y2 in range(MAP_SIZE, -MAP_SIZE-1, -1):
+                            for x2 in range(-MAP_SIZE, MAP_SIZE+1):
+                                if(distance(x2, y2, x, y) < 10):
+                                    map.append(json.dumps({
+                                        "coord": P2(x2, y2),
+                                        "status" :  "visible"
+                                    }))
+                                else :
+                                    map.append(json.dumps({
+                                        "coord": P2(x2, y2),
+                                        "status" :  "hidden"
+                                    }))
+
+                        map_doc_ref = db.collection("game_room").document(game_room_id).collection("players").document()
+                        map_doc_ref.set({
+                                "name": player["name"],
+                                "number": player["number"],
+                                "map" : map
+                            })
 
                 dict = {
                     "type": type,
-                    "planet_type": planet_type,
+                    "fill": fill,
                     "coord": P2(x, y),
-                    "size_variation": rand_size,
                     "asteroids": asteroids
                 }
                 map.append(json.dumps(dict))
 
-    map_doc = db.collection("map").document()
-    map_doc.set({
+    map_doc_ref = db.collection("game_room").document(
+        game_room_id).collection("map").document()
+    map_doc_ref.set({
         "map": map,
         "size": size,
     })
 
-    return {"message": f"Map created {map_doc}"}
+    map_doc_id = map_doc_ref.id
+    return {"message": f"Map created {map_doc_id}", "game_room_id": game_room_id}
 
 
 @router.get("/map/{id}")
@@ -101,6 +136,7 @@ async def get_map_by_id(id: str):
     except:
         raise HTTPException(status_code=404, detail="Map not found")
 
+
 @router.delete("/map/{id}")
 async def delete_map_by_id(id: str):
     try:
@@ -113,3 +149,24 @@ async def delete_map_by_id(id: str):
             raise HTTPException(status_code=404, detail="Map not found")
     except:
         raise HTTPException(status_code=404, detail="Map not found")
+
+@router.websocket("/map/")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            data_parsed = json.loads(data)
+            if "request" in data_parsed and data_parsed["request"] == "/map":
+                doc = db.collection("game_room").document(data["GameRoomID"]).get()
+                game_map = doc.collection("map").get().to_dict()
+                print(game_map)
+                # size = doc.to_dict().size
+                await websocket.send_json()
+            else:
+                pass
+
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+        await websocket.close()

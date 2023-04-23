@@ -1,7 +1,6 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket
 from database import firebase
 from google.cloud import firestore
-import websockets
 import json
 
 router = APIRouter()
@@ -15,13 +14,16 @@ async def create_room(player_name: str, token_game_room: str):
     new_room_ref.set({
         "room_game_owner": player_name,
         "token_game_room": token_game_room,
-        "players": []
+        "players": [],
+        "started": False,
     })
     room_id = new_room_ref.id
     return {
         "room_id": room_id,
         "owner_room_game": player_name,
         "token_game_room": token_game_room,
+        "players": [],
+        "started": False,
     }
 
 
@@ -33,11 +35,27 @@ async def join_room(player_name: str, token_game_room: str):
         return {"message": "Invalid game room token"}
 
     room_id = game_room_ref[0].id
-    db.collection("game_room").document(room_id).update(
-        {"players": firestore.ArrayUnion([player_name])})
+    game_room_doc = db.collection("game_room").document(room_id)
+
+    players = game_room_doc.get().to_dict().get("players", [])
+    player_number = len(players) + 1
+    player_data = {"name": player_name, "number": player_number}
+    game_room_doc.update(
+        {"players": firestore.ArrayUnion([player_data])})
+
     await broadcast(room_id, "players_updated")
 
-    return {"message": f"{player_name} has joined the game room {room_id}"}
+    return {
+        "message": f"{player_name} has joined the game room {room_id}",
+        "player_data": player_data
+    }
+
+
+@router.post("/start/game_room/{room_id}")
+async def start_game_room(room_id: str):
+    room_ref = db.collection("game_room").document(room_id)
+    room_ref.update({"started": True})
+    return {"message": f"Game room with id {room_id} has started."}
 
 
 async def broadcast(room_id: str, message: str):
@@ -56,7 +74,6 @@ async def websocket_endpoint(websocket: WebSocket, room_token: str):
         while True:
             data = await websocket.receive_text()
             data_parsed = json.loads(data)
-            print(data_parsed["request"])
             if "request" in data_parsed and data_parsed["request"] == "/game_room":
                 room_data = await get_room_by_token(room_token)
                 await websocket.send_json(room_data)
@@ -66,9 +83,6 @@ async def websocket_endpoint(websocket: WebSocket, room_token: str):
     except Exception as e:
         print(f"WebSocket error: {e}")
         await websocket.close()
-
-    except WebSocketDisconnect:
-        pass
 
 
 @router.get("/game_room/{room_id}")
