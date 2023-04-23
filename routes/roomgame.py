@@ -47,8 +47,9 @@ async def broadcast(room_id: str, message: str):
     else:
         print(f"No connections found for room {room_id}")
 
-@router.websocket("/gameroom/{room_id}")
-async def websocket_endpoint(websocket: WebSocket, room_id: str):
+
+@router.websocket("/gameroom/{room_token}")
+async def websocket_endpoint(websocket: WebSocket, room_token: str):
     await websocket.accept()
 
     try:
@@ -57,19 +58,18 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
             data_parsed = json.loads(data)
             print(data_parsed["request"])
             if "request" in data_parsed and data_parsed["request"] == "/game_room":
-                room_ref = db.collection("game_room").document(data_parsed["GameRoomID"])
-                room_snapshot = room_ref.get()
-                if room_snapshot.exists:
-                    room_data = room_snapshot.to_dict()
-                    await websocket.send_json(room_data)
-                else:
-                    await websocket.send_json({})
+                room_data = await get_room_by_token(room_token)
+                await websocket.send_json(room_data)
+            else:
+                pass
+
     except Exception as e:
         print(f"WebSocket error: {e}")
         await websocket.close()
 
     except WebSocketDisconnect:
         pass
+
 
 @router.get("/game_room/{room_id}")
 async def get_room_by_id(room_id: str):
