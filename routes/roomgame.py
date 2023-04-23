@@ -87,7 +87,10 @@ async def get_room_by_token(token_game_room: str):
         "token_game_room", "==", token_game_room)
     room = room_ref.get()
     if room:
-        return room[0].to_dict()
+        room_data = room[0].to_dict()
+        room_id = room[0].id
+        room_data["id_doc_game_room"] = room_id
+        return room_data
     else:
         return {"message": "Room not found"}
 
