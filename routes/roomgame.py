@@ -41,7 +41,7 @@ async def join_room(player_name: str, token_game_room: str):
     game_room_doc = db.collection("game_room").document(room_id)
 
     players = game_room_doc.get().to_dict().get("players", [])
-    player_number = len(players) + 1
+    player_number = len(players) + 2
     player_data = {"name": player_name, "number": player_number}
     game_room_doc.update(
         {"players": firestore.ArrayUnion([player_data])})

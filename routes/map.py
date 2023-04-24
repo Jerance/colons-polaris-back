@@ -7,7 +7,7 @@ import asyncio
 
 router = APIRouter()
 db = firebase.db
-def P2(q, r ,s ): return {"q": q, "r": r, "s" : s}
+def P2(q, r, s): return {"q": q, "r": r, "s": s}
 
 
 EDGES = 6
@@ -40,49 +40,63 @@ async def map_generate(size: int, game_room_id: str):
 
     game_room = doc.to_dict()
 
-    #{'players': [], 'started': False, 'room_game_owner': 'Jerance', 'token_game_room': '8FFoQT2KMkNRwG0'}
 
     players = game_room["players"]
-    players.append({"name": game_room["room_game_owner"], "number" : 1})
+    players.append(
+        {
+            "name": game_room["room_game_owner"],
+            "number": 1,
+            "resources": {
+                    "water": 10,
+                    "freeze-dried": 10,
+                    "uranium": 10,
+                    "steel": 10,
+                    "hydrogene": 10,
+                    "diamonds": 10,
+                    "energy": 10
+                },
+            "tour": 0
+        }
+    )
 
 
     map = []
-    for y in range(MAP_SIZE, -MAP_SIZE-1, -1):
-        for x in range(-MAP_SIZE, MAP_SIZE+1):
-            if (x * y > 0 and abs(x) + abs(y) > MAP_SIZE):
+    for y in range(MAP_SIZE, -MAP_SIZE - 1, -1):
+        for x in range(-MAP_SIZE, MAP_SIZE + 1):
+            if x * y > 0 and abs(x) + abs(y) > MAP_SIZE:
                 pass
             else:
                 random_number = random.randint(1, 100)
                 type = "void"
                 fill = "void"
                 asteroids = []
-                if (x == 0 and y == 0):
+                if x == 0 and y == 0:
                     type = "sun"
                     fill = "sun"
-                elif (distance(x, y) < 5):
+                elif distance(x, y) < 5:
                     pass
-                elif (random_number > 95):
+                elif random_number > 95:
                     type = "asteroid"
                     number = random.randint(4, 7)
                     for i in range(0, number):
                         posX = random.randint(0, 10)
                         posY = random.randint(0, 10)
                         asteroids.append({"x": posX, "y": posY})
-                elif (random_number > 85):
+                elif random_number > 85:
                     type = "planet"
                     planet_random = random.randint(1, 100)
-                    if (planet_random > 90):
+                    if planet_random > 90:
                         fill = "indu"
-                    elif (planet_random > 50):
+                    elif planet_random > 50:
                         fill = "agri"
-                    elif (planet_random > 30):
+                    elif planet_random > 30:
                         fill = "atmo"
                     else:
                         fill = "mine"
-                if(type == "void" and random_number < 5):
-                    if(len(players) > 0):
+                if type == "void" and random_number < 5:
+                    if len(players) > 0:
                         player = players.pop()
-                        type ="base"
+                        type = "base"
                         fill = str(player["number"])
                         player_map = []
                         for y2 in range(MAP_SIZE, -MAP_SIZE-1, -1):
@@ -102,7 +116,9 @@ async def map_generate(size: int, game_room_id: str):
                         map_player_doc_ref.set({
                                 "name": player["name"],
                                 "number": player["number"],
-                                "map" : player_map
+                                "resources": player["resources"],
+                                "tour": player["tour"],
+                                "player_map": player_map
                             })
 
                 dict = {
@@ -113,8 +129,7 @@ async def map_generate(size: int, game_room_id: str):
                 }
                 map.append(json.dumps(dict))
 
-    map_doc_ref = db.collection("game_room").document(
-        game_room_id).collection("map").document()
+    map_doc_ref = db.collection("game_room").document(game_room_id).collection("map").document()
     map_doc_ref.set({
         "map": map,
         "size": size,
@@ -158,15 +173,16 @@ async def websocket_endpoint(websocket: WebSocket):
     # Define a callback function that will be called when the map document is updated
     async def on_snapshot_callback(query_snapshot, changes, read_time):
         if query_snapshot:
-        # You can process multiple documents here if needed
-            doc_snapshot = query_snapshot[0]  # Assume there's only one document in the map collection
+            # You can process multiple documents here if needed
+            # Assume there's only one document in the map collection
+            doc_snapshot = query_snapshot[0]
             print("data sent")
             await websocket.send_json(doc_snapshot.to_dict())
         else:
             await websocket.send_json({"message": "Map not found"})
 
-
     # Wrap the callback function to make it synchronous, as required by the on_snapshot method
+
     def on_snapshot_sync(doc_snapshot, changes, read_time):
         asyncio.run(on_snapshot_callback(doc_snapshot, changes, read_time))
 
