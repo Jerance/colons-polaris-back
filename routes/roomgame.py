@@ -2,6 +2,7 @@ from fastapi import APIRouter, WebSocket
 from database import firebase
 from google.cloud import firestore
 import json
+import asyncio
 
 router = APIRouter()
 db = firebase.db
@@ -45,10 +46,7 @@ async def join_room(player_name: str, token_game_room: str):
 
     await broadcast(room_id, "players_updated")
 
-    return {
-        "message": f"{player_name} has joined the game room {room_id}",
-        "player_data": player_data
-    }
+    return {"message": f"{player_name} has joined the game room {room_id}"}
 
 
 @router.post("/start/game_room/{room_id}")
@@ -70,6 +68,27 @@ async def broadcast(room_id: str, message: str):
 async def websocket_endpoint(websocket: WebSocket, room_token: str):
     await websocket.accept()
 
+    # Define a callback function that will be called when the document is updated
+    async def on_snapshot_callback(query_snapshot: 'QuerySnapshot', changes: str, read_time: str):
+        if query_snapshot:
+            doc_snapshot = query_snapshot[0]  # Assume there's only one document with the given token
+            if doc_snapshot.exists:
+                await websocket.send_json(doc_snapshot.to_dict())
+            else:
+                await websocket.send_json({"message": "Room not found"})
+        else:
+            await websocket.send_json({"message": "Room not found"})
+
+    # Wrap the callback function to make it synchronous, as required by the on_snapshot method
+    def on_snapshot_sync(query_snapshot: 'QuerySnapshot', changes: str, read_time: str):
+        asyncio.run(on_snapshot_callback(query_snapshot, changes, read_time))
+
+    # Get the room_ref
+    room_ref = db.collection("game_room").where("token_game_room", "==", room_token)
+
+    # Attach the on_snapshot listener
+    listener = room_ref.on_snapshot(on_snapshot_sync)
+
     try:
         while True:
             data = await websocket.receive_text()
@@ -83,7 +102,7 @@ async def websocket_endpoint(websocket: WebSocket, room_token: str):
     except Exception as e:
         print(f"WebSocket error: {e}")
         await websocket.close()
-
+        listener.unsubscribe()  # Clean up the listener when the websocket is closed
 
 @router.get("/game_room/{room_id}")
 async def get_room_by_id(room_id: str):

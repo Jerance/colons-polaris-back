@@ -3,10 +3,11 @@ from database import firebase
 import math
 import random
 import json
+import asyncio
 
 router = APIRouter()
 db = firebase.db
-def P2(x, y): return {"x": x, "y": y}
+def P2(q, r ,s ): return {"q": q, "r": r, "s" : s}
 
 
 EDGES = 6
@@ -46,7 +47,6 @@ async def map_generate(size: int, game_room_id: str):
 
 
     map = []
-    center = P2(0, 0)
     for y in range(MAP_SIZE, -MAP_SIZE-1, -1):
         for x in range(-MAP_SIZE, MAP_SIZE+1):
             if (x * y > 0 and abs(x) + abs(y) > MAP_SIZE):
@@ -54,10 +54,11 @@ async def map_generate(size: int, game_room_id: str):
             else:
                 random_number = random.randint(1, 100)
                 type = "void"
-                fill = ""
+                fill = "void"
                 asteroids = []
                 if (x == 0 and y == 0):
                     type = "sun"
+                    fill = "sun"
                 elif (distance(x, y) < 5):
                     pass
                 elif (random_number > 95):
@@ -78,37 +79,36 @@ async def map_generate(size: int, game_room_id: str):
                         fill = "atmo"
                     else:
                         fill = "mine"
-
                 if(type == "void" and random_number < 5):
                     if(len(players) > 0):
                         player = players.pop()
                         type ="base"
-                        fill = player["number"]
-                        map = []
+                        fill = type + "/" + player["number"]
+                        player_map = []
                         for y2 in range(MAP_SIZE, -MAP_SIZE-1, -1):
                             for x2 in range(-MAP_SIZE, MAP_SIZE+1):
                                 if(distance(x2, y2, x, y) < 10):
-                                    map.append(json.dumps({
-                                        "coord": P2(x2, y2),
+                                    player_map.append(json.dumps({
+                                        "coord": P2(x2, y2, (-x2 - y2)),
                                         "status" :  "visible"
                                     }))
                                 else :
-                                    map.append(json.dumps({
-                                        "coord": P2(x2, y2),
+                                    player_map.append(json.dumps({
+                                        "coord": P2(x2, y2, (-x2 - y2)),
                                         "status" :  "hidden"
                                     }))
 
-                        map_doc_ref = db.collection("game_room").document(game_room_id).collection("players").document()
-                        map_doc_ref.set({
+                        map_player_doc_ref = db.collection("game_room").document(game_room_id).collection("players").document()
+                        map_player_doc_ref.set({
                                 "name": player["name"],
                                 "number": player["number"],
-                                "map" : map
+                                "map" : player_map
                             })
 
                 dict = {
                     "type": type,
                     "fill": fill,
-                    "coord": P2(x, y),
+                    "coord": P2(x, y, (-x - y)),
                     "asteroids": asteroids
                 }
                 map.append(json.dumps(dict))
@@ -153,20 +153,44 @@ async def delete_map_by_id(id: str):
 @router.websocket("/map/")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    listener = None
+
+    # Define a callback function that will be called when the map document is updated
+    async def on_snapshot_callback(query_snapshot, changes, read_time):
+        if query_snapshot:
+        # You can process multiple documents here if needed
+            doc_snapshot = query_snapshot[0]  # Assume there's only one document in the map collection
+            print("data sent")
+            await websocket.send_json(doc_snapshot.to_dict())
+        else:
+            await websocket.send_json({"message": "Map not found"})
+
+
+    # Wrap the callback function to make it synchronous, as required by the on_snapshot method
+    def on_snapshot_sync(doc_snapshot, changes, read_time):
+        asyncio.run(on_snapshot_callback(doc_snapshot, changes, read_time))
 
     try:
         while True:
             data = await websocket.receive_text()
             data_parsed = json.loads(data)
             if "request" in data_parsed and data_parsed["request"] == "/map":
-                doc = db.collection("game_room").document(data["GameRoomID"]).get()
-                game_map = doc.collection("map").get().to_dict()
-                print(game_map)
-                # size = doc.to_dict().size
-                await websocket.send_json()
+                game_room_id = data_parsed["GameRoomID"]
+                doc = db.collection("game_room").document(game_room_id)
+
+                # Detach the previous listener, if any
+                if listener:
+                    listener.unsubscribe()
+
+                # Attach the on_snapshot listener to the map collection
+                map_ref = doc.collection("map")
+                listener = map_ref.on_snapshot(on_snapshot_sync)
+
             else:
                 pass
 
     except Exception as e:
         print(f"WebSocket error: {e}")
+        if listener:
+            listener.unsubscribe()
         await websocket.close()
