@@ -3,6 +3,8 @@ from database import firebase
 from google.cloud import firestore
 import json
 import asyncio
+from starlette.websockets import WebSocketState
+
 
 router = APIRouter()
 db = firebase.db
@@ -101,8 +103,9 @@ async def websocket_endpoint(websocket: WebSocket, room_token: str):
 
     except Exception as e:
         print(f"WebSocket error: {e}")
-        await websocket.close()
-        listener.unsubscribe()  # Clean up the listener when the websocket is closed
+        if websocket.client_state == WebSocketState.CONNECTED:
+            await websocket.close()
+        listener.unsubscribe()
 
 @router.get("/game_room/{room_id}")
 async def get_room_by_id(room_id: str):

@@ -83,7 +83,7 @@ async def map_generate(size: int, game_room_id: str):
                     if(len(players) > 0):
                         player = players.pop()
                         type ="base"
-                        fill = type + "/" + player["number"]
+                        fill = type + "/" + str(player["number"])
                         player_map = []
                         for y2 in range(MAP_SIZE, -MAP_SIZE-1, -1):
                             for x2 in range(-MAP_SIZE, MAP_SIZE+1):
