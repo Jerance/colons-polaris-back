@@ -55,7 +55,6 @@ async def map_generate(size: int, game_room_id: str):
                     "diamonds": 10,
                     "energy": 10
                 },
-            "tour": 0
         }
     )
 
@@ -117,17 +116,16 @@ async def map_generate(size: int, game_room_id: str):
                                 "name": player["name"],
                                 "number": player["number"],
                                 "resources": player["resources"],
-                                "tour": player["tour"],
                                 "player_map": player_map
                             })
 
-                dict = {
+
+                map.append(json.dumps({
                     "type": type,
                     "fill": fill,
                     "coord": P2(x, y, (-x - y)),
                     "asteroids": asteroids
-                }
-                map.append(json.dumps(dict))
+                }))
 
     map_doc_ref = db.collection("game_room").document(game_room_id).collection("map").document()
     map_doc_ref.set({
@@ -136,6 +134,7 @@ async def map_generate(size: int, game_room_id: str):
     })
 
     map_doc_id = map_doc_ref.id
+    print(f"Map created {map_doc_id}")
     return {"message": f"Map created {map_doc_id}", "game_room_id": game_room_id}
 
 
