@@ -4,6 +4,8 @@ import math
 import random
 import json
 import asyncio
+from typing import List
+
 # from routes.roomgame import get_room_by_id
 
 router = APIRouter()
@@ -43,22 +45,11 @@ async def map_generate(size: int, game_room_id: str):
 
 
     players = game_room["players"]
+
     players.append(
         {
             "name": game_room["room_game_owner"],
             "number": 1,
-            "resources": {
-                    "water": 10,
-                    "freeze-dried": 10,
-                    "uranium": 10,
-                    "steel": 10,
-                    "hydrogene": 10,
-                    "diamonds": 10,
-                    "energy": 10
-                },
-            "building": {
-                
-            }
         }
     )
 
@@ -115,13 +106,22 @@ async def map_generate(size: int, game_room_id: str):
                                         "status" :  "hidden"
                                     }))
 
-                        map_player_doc_ref = db.collection("game_room").document(game_room_id).collection("players").document()
+                        map_player_doc_ref = db.collection("game_room").document(game_room_id).collection("players").document(str( player["number"]))
+                        print(player)
                         map_player_doc_ref.set({
                                 "name": player["name"],
                                 "number": player["number"],
-                                "resources": player["resources"],
+                                "resources":  {
+                                    "water": 10,
+                                    "freeze-dried": 10,
+                                    "uranium": 10,
+                                    "steel": 10,
+                                    "hydrogene": 10,
+                                    "diamonds": 10,
+                                    "energy": 10
+                                },
                                 "player_map": player_map,
-                                "buildings" : player["buildings"]
+                                "buildings" : {}
                             })
 
 
@@ -131,6 +131,7 @@ async def map_generate(size: int, game_room_id: str):
                     "coord": P2(x, y, (-x - y)),
                     "asteroids": asteroids
                 }))
+
 
     map_doc_ref = db.collection("game_room").document(game_room_id).collection("map").document()
     map_doc_ref.set({
@@ -143,51 +144,34 @@ async def map_generate(size: int, game_room_id: str):
     return {"message": f"Map created {map_doc_id}", "game_room_id": game_room_id}
 
 
-@router.get("/map/{id}")
-async def get_map_by_id(id: str):
-    try:
-        doc_ref = db.collection("map").document(id)
-        doc = doc_ref.get()
-        if doc.exists:
-            return {"id": doc.id, **doc.to_dict()}
-        else:
-            raise HTTPException(status_code=404, detail="Map not found")
-    except:
-        raise HTTPException(status_code=404, detail="Map not found")
-
-
-@router.delete("/map/{id}")
-async def delete_map_by_id(id: str):
-    try:
-        doc_ref = db.collection("map").document(id)
-        doc = doc_ref.get()
-        if doc.exists:
-            doc_ref.delete()
-            return {"message": "Map deleted successfully"}
-        else:
-            raise HTTPException(status_code=404, detail="Map not found")
-    except:
-        raise HTTPException(status_code=404, detail="Map not found")
-
 @router.websocket("/map/")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    listener = None
+    print("WebSocket connection accepted")
 
-    # Define a callback function that will be called when the map document is updated
-    async def on_snapshot_callback(query_snapshot):
+    listeners: List = []
+
+    async def on_snapshot_callback(query_snapshot, type):
         if query_snapshot:
-            # You can process multiple documents here if needed
-            # Assume there's only one document in the map collection
             doc_snapshot = query_snapshot[0]
-            await websocket.send_json(doc_snapshot.to_dict())
+            if type == "map":
+                print("map found")
+                await websocket.send_json({"type" : "map", "data" : doc_snapshot.to_dict()})
+            elif type == "player":
+                print("player found")
+                await websocket.send_json({"type" : "player", "data": doc_snapshot.to_dict()})
+            elif type == "room":
+                print("room found")
+                await websocket.send_json({"type" : "room", "data": doc_snapshot.to_dict()})
         else:
-            await websocket.send_json({"message": "Map not found"})
+            print(f"{type} not found")
+            await websocket.send_json({"message": f"{type} not found"})
 
-    # Wrap the callback function to make it synchronous, as required by the on_snapshot method
+    def on_snapshot_sync(doc_snapshot, changes, read_time, type):
+        asyncio.run(on_snapshot_callback(doc_snapshot, type))
 
-    def on_snapshot_sync(doc_snapshot, changes, read_time):
-        asyncio.run(on_snapshot_callback(doc_snapshot, changes, read_time))
+    def remove_listeners(game_room_id):
+        listeners[:] = [listener for listener in listeners if listener.game_room_id != game_room_id]
 
     try:
         while True:
@@ -195,23 +179,37 @@ async def websocket_endpoint(websocket: WebSocket):
             data_parsed = json.loads(data)
             if "request" in data_parsed and data_parsed["request"] == "/map":
                 game_room_id = data_parsed["GameRoomID"]
-                doc = db.collection("game_room").document(game_room_id)
-                # room_data = get_room_by_id(game_room_id)
-                # print(room_data)
+                player_number = str(data_parsed["playerNumber"])
 
-                # Detach the previous listener, if any
-                if listener:
-                    listener.unsubscribe()
+                # Remove existing listeners for the same game room
+                remove_listeners(game_room_id)
 
-                # Attach the on_snapshot listener to the map collection
-                map_ref = doc.collection("map")
-                listener = map_ref.on_snapshot(on_snapshot_sync)
+                # Map listener
+                map_doc = db.collection("game_room").document(game_room_id).collection("map")
+                map_listener = map_doc.on_snapshot(lambda doc_snapshot, changes, read_time: on_snapshot_sync(doc_snapshot, changes, read_time, "map"))
+                map_listener.game_room_id = game_room_id
+                listeners.append(map_listener)
+
+                # Player listener
+                player_doc = db.collection("game_room").document(game_room_id).collection("players").document(player_number)
+                player_listener = player_doc.on_snapshot(lambda doc_snapshot, changes, read_time: on_snapshot_sync(doc_snapshot, changes, read_time, "player"))
+                player_listener.game_room_id = game_room_id
+                listeners.append(player_listener)
+
+
+                # Player listener
+                player_doc = db.collection("game_room").document(game_room_id)
+                room_listener = player_doc.on_snapshot(lambda doc_snapshot, changes, read_time: on_snapshot_sync(doc_snapshot, changes, read_time, "room"))
+                room_listener.game_room_id = game_room_id
+                listeners.append(room_listener)
 
             else:
                 pass
 
     except Exception as e:
         print(f"WebSocket error: {e}")
-        if listener:
+        for listener in listeners:
             listener.unsubscribe()
         await websocket.close()
+        print("WebSocket connection error")
+    print("WebSocket connection closed")
