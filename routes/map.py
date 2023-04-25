@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, WebSocket
+from fastapi import APIRouter, HTTPException, WebSocket, Request
 from database import firebase
 import math
 import random
 import json
 import asyncio
 from typing import List
+from fastapi.websockets import WebSocketDisconnect
 
 # from routes.roomgame import get_room_by_id
 
@@ -32,6 +33,22 @@ def distance(xa, ya, xb=0, yb=0):
         return dx + dy
     else:
         return max(dx, dy)
+
+@router.put("/player/map")
+async def update_player_data(request: Request):
+    data = await request.json()
+
+
+    if not data["game_room_id"] or not data["player_number"]:
+        raise HTTPException(status_code=400, detail="Missing game_room_id or player_number")
+
+    try:
+        player_doc_ref = db.collection("game_room").document(data["game_room_id"]).collection("players").document(str(data["player_number"]))
+
+        player_doc_ref.update({"player_map": data["updated_player_data"]})
+        print("success")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/map/generate/{size}/{game_room_id}")
@@ -95,16 +112,19 @@ async def map_generate(size: int, game_room_id: str):
                         player_map = []
                         for y2 in range(MAP_SIZE, -MAP_SIZE-1, -1):
                             for x2 in range(-MAP_SIZE, MAP_SIZE+1):
-                                if(distance(x2, y2, x, y) < 10):
-                                    player_map.append(json.dumps({
-                                        "coord": P2(x2, y2, (-x2 - y2)),
-                                        "status" :  "visible"
-                                    }))
+                                if x2 * y2 > 0 and abs(x2) + abs(y2) > MAP_SIZE:
+                                    pass
                                 else :
-                                    player_map.append(json.dumps({
-                                        "coord": P2(x2, y2, (-x2 - y2)),
-                                        "status" :  "hidden"
-                                    }))
+                                    if(distance(x2, y2, x, y) < 10):
+                                        player_map.append(json.dumps({
+                                            "coord": P2(x2, y2, (-x2 - y2)),
+                                            "status" :  "visible"
+                                        }))
+                                    else :
+                                        player_map.append(json.dumps({
+                                            "coord": P2(x2, y2, (-x2 - y2)),
+                                            "status" :  "hidden"
+                                        }))
 
                         map_player_doc_ref = db.collection("game_room").document(game_room_id).collection("players").document(str( player["number"]))
                         print(player)
@@ -171,8 +191,10 @@ async def websocket_endpoint(websocket: WebSocket):
         asyncio.run(on_snapshot_callback(doc_snapshot, type))
 
     def remove_listeners(game_room_id):
-        listeners[:] = [listener for listener in listeners if listener.game_room_id != game_room_id]
-
+        for listener in listeners:
+            if listener.game_room_id == game_room_id:
+                listener.unsubscribe()
+                listeners.remove(listener)
     try:
         while True:
             data = await websocket.receive_text()
@@ -206,10 +228,15 @@ async def websocket_endpoint(websocket: WebSocket):
             else:
                 pass
 
+
+    except WebSocketDisconnect:
+        print("WebSocket connection disconnected")
+        for listener in listeners:
+            listener.unsubscribe()
     except Exception as e:
         print(f"WebSocket error: {e}")
         for listener in listeners:
             listener.unsubscribe()
-        await websocket.close()
-        print("WebSocket connection error")
-    print("WebSocket connection closed")
+    await websocket.close()
+
+
