@@ -1,12 +1,17 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, WebSocket, Request
 from database import firebase
 import math
 import random
 import json
+import asyncio
+from typing import List
+from fastapi.websockets import WebSocketDisconnect
+
+# from routes.roomgame import get_room_by_id
 
 router = APIRouter()
 db = firebase.db
-def P2(x, y): return {"x": x, "y": y}
+def P2(q, r, s): return {"q": q, "r": r, "s": s}
 
 
 EDGES = 6
@@ -29,87 +34,209 @@ def distance(xa, ya, xb=0, yb=0):
     else:
         return max(dx, dy)
 
+@router.put("/player/map")
+async def update_player_data(request: Request):
+    data = await request.json()
 
-@router.post("/map/generate/{size}")
-async def map_generate(size: int):
+
+    if not data["game_room_id"] or not data["player_number"]:
+        raise HTTPException(status_code=400, detail="Missing game_room_id or player_number")
+
+    try:
+        player_doc_ref = db.collection("game_room").document(data["game_room_id"]).collection("players").document(str(data["player_number"]))
+
+        player_doc_ref.update({"player_map": data["updated_player_data"]})
+        print("success")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/map/generate/{size}/{game_room_id}")
+async def map_generate(size: int, game_room_id: str):
     MAP_SIZE = size
 
+    doc_ref = db.collection("game_room").document(game_room_id)
+    doc = doc_ref.get()
+
+    game_room = doc.to_dict()
+
+
+    players = game_room["players"]
+
+    players.append(
+        {
+            "name": game_room["room_game_owner"],
+            "number": 1,
+        }
+    )
+
+
     map = []
-    center = P2(0, 0)
-    for y in range(MAP_SIZE, -MAP_SIZE-1, -1):
-        for x in range(-MAP_SIZE, MAP_SIZE+1):
-            if (x * y > 0 and abs(x) + abs(y) > MAP_SIZE):
+    for y in range(MAP_SIZE, -MAP_SIZE - 1, -1):
+        for x in range(-MAP_SIZE, MAP_SIZE + 1):
+            if x * y > 0 and abs(x) + abs(y) > MAP_SIZE:
                 pass
             else:
                 random_number = random.randint(1, 100)
                 type = "void"
-                planet_type = ""
-                rand_size = 0
+                fill = "void"
                 asteroids = []
-
-                if (x == 0 and y == 0):
+                if x == 0 and y == 0:
                     type = "sun"
-                elif (distance(x, y) < 5):
+                    fill = "sun"
+                elif distance(x, y) < 5:
                     pass
-                elif (random_number > 95):
+                elif random_number > 95:
                     type = "asteroid"
                     number = random.randint(4, 7)
                     for i in range(0, number):
                         posX = random.randint(0, 10)
                         posY = random.randint(0, 10)
                         asteroids.append({"x": posX, "y": posY})
-                elif (random_number > 85):
+                elif random_number > 85:
                     type = "planet"
                     planet_random = random.randint(1, 100)
-                    rand_size = random.randint(1, 20) - 10
-                    if (planet_random > 90):
-                        planet_type = "indu"
-                    elif (planet_random > 50):
-                        planet_type = "agri"
-                    elif (planet_random > 30):
-                        planet_type = "atmo"
+                    if planet_random > 90:
+                        fill = "indu"
+                    elif planet_random > 50:
+                        fill = "agri"
+                    elif planet_random > 30:
+                        fill = "atmo"
                     else:
-                        planet_type = "mine"
+                        fill = "mine"
+                if type == "void" and random_number < 5:
+                    if len(players) > 0:
+                        player = players.pop()
+                        type = "base"
+                        fill = str(player["number"])
+                        player_map = []
+                        for y2 in range(MAP_SIZE, -MAP_SIZE-1, -1):
+                            for x2 in range(-MAP_SIZE, MAP_SIZE+1):
+                                if x2 * y2 > 0 and abs(x2) + abs(y2) > MAP_SIZE:
+                                    pass
+                                else :
+                                    if(distance(x2, y2, x, y) < 10):
+                                        player_map.append(json.dumps({
+                                            "coord": P2(x2, y2, (-x2 - y2)),
+                                            "status" :  "visible"
+                                        }))
+                                    else :
+                                        player_map.append(json.dumps({
+                                            "coord": P2(x2, y2, (-x2 - y2)),
+                                            "status" :  "hidden"
+                                        }))
 
-                dict = {
+                        map_player_doc_ref = db.collection("game_room").document(game_room_id).collection("players").document(str( player["number"]))
+                        print(player)
+                        map_player_doc_ref.set({
+                                "name": player["name"],
+                                "number": player["number"],
+                                "resources":  {
+                                    "water": 10,
+                                    "freeze-dried": 10,
+                                    "uranium": 10,
+                                    "steel": 10,
+                                    "hydrogene": 10,
+                                    "diamonds": 10,
+                                    "energy": 10
+                                },
+                                "player_map": player_map,
+                                "buildings" : {}
+                            })
+
+
+                map.append(json.dumps({
                     "type": type,
-                    "planet_type": planet_type,
-                    "coord": P2(x, y),
-                    "size_variation": rand_size,
+                    "fill": fill,
+                    "coord": P2(x, y, (-x - y)),
                     "asteroids": asteroids
-                }
-                map.append(json.dumps(dict))
+                }))
 
-    map_doc = db.collection("map").document()
-    map_doc.set({
+
+    map_doc_ref = db.collection("game_room").document(game_room_id).collection("map").document()
+    map_doc_ref.set({
         "map": map,
         "size": size,
     })
 
-    return {"message": f"Map created {map_doc}"}
+    map_doc_id = map_doc_ref.id
+    print(f"Map created {map_doc_id}")
+    return {"message": f"Map created {map_doc_id}", "game_room_id": game_room_id}
 
 
-@router.get("/map/{id}")
-async def get_map_by_id(id: str):
-    try:
-        doc_ref = db.collection("map").document(id)
-        doc = doc_ref.get()
-        if doc.exists:
-            return {"id": doc.id, **doc.to_dict()}
+@router.websocket("/map/")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    print("WebSocket connection accepted")
+
+    listeners: List = []
+
+    async def on_snapshot_callback(query_snapshot, type):
+        if query_snapshot:
+            doc_snapshot = query_snapshot[0]
+            if type == "map":
+                print("map found")
+                await websocket.send_json({"type" : "map", "data" : doc_snapshot.to_dict()})
+            elif type == "player":
+                print("player found")
+                await websocket.send_json({"type" : "player", "data": doc_snapshot.to_dict()})
+            elif type == "room":
+                print("room found")
+                await websocket.send_json({"type" : "room", "data": doc_snapshot.to_dict()})
         else:
-            raise HTTPException(status_code=404, detail="Map not found")
-    except:
-        raise HTTPException(status_code=404, detail="Map not found")
+            print(f"{type} not found")
+            await websocket.send_json({"message": f"{type} not found"})
 
-@router.delete("/map/{id}")
-async def delete_map_by_id(id: str):
+    def on_snapshot_sync(doc_snapshot, changes, read_time, type):
+        asyncio.run(on_snapshot_callback(doc_snapshot, type))
+
+    def remove_listeners(game_room_id):
+        for listener in listeners:
+            if listener.game_room_id == game_room_id:
+                listener.unsubscribe()
+                listeners.remove(listener)
     try:
-        doc_ref = db.collection("map").document(id)
-        doc = doc_ref.get()
-        if doc.exists:
-            doc_ref.delete()
-            return {"message": "Map deleted successfully"}
-        else:
-            raise HTTPException(status_code=404, detail="Map not found")
-    except:
-        raise HTTPException(status_code=404, detail="Map not found")
+        while True:
+            data = await websocket.receive_text()
+            data_parsed = json.loads(data)
+            if "request" in data_parsed and data_parsed["request"] == "/map":
+                game_room_id = data_parsed["GameRoomID"]
+                player_number = str(data_parsed["playerNumber"])
+
+                # Remove existing listeners for the same game room
+                remove_listeners(game_room_id)
+
+                # Map listener
+                map_doc = db.collection("game_room").document(game_room_id).collection("map")
+                map_listener = map_doc.on_snapshot(lambda doc_snapshot, changes, read_time: on_snapshot_sync(doc_snapshot, changes, read_time, "map"))
+                map_listener.game_room_id = game_room_id
+                listeners.append(map_listener)
+
+                # Player listener
+                player_doc = db.collection("game_room").document(game_room_id).collection("players").document(player_number)
+                player_listener = player_doc.on_snapshot(lambda doc_snapshot, changes, read_time: on_snapshot_sync(doc_snapshot, changes, read_time, "player"))
+                player_listener.game_room_id = game_room_id
+                listeners.append(player_listener)
+
+
+                # Player listener
+                player_doc = db.collection("game_room").document(game_room_id)
+                room_listener = player_doc.on_snapshot(lambda doc_snapshot, changes, read_time: on_snapshot_sync(doc_snapshot, changes, read_time, "room"))
+                room_listener.game_room_id = game_room_id
+                listeners.append(room_listener)
+
+            else:
+                pass
+
+
+    except WebSocketDisconnect:
+        print("WebSocket connection disconnected")
+        for listener in listeners:
+            listener.unsubscribe()
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+        for listener in listeners:
+            listener.unsubscribe()
+    await websocket.close()
+
+
