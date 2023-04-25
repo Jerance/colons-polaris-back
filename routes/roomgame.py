@@ -116,6 +116,32 @@ async def get_room_by_id(room_id: str):
     else:
         return {"message": "Room not found"}
 
+@router.get("/game_room/playerslist/{room_id}")
+async def get_game_room_players_list(room_id: str):
+    room_ref = db.collection("game_room").document(room_id)
+    room = room_ref.get()
+    if room.exists:
+        room_data = room.to_dict()
+        return {
+            "players": room_data["players"],
+            "room_game_owner": room_data["room_game_owner"]
+        }
+    else:
+        return {"message": "Room not found"}
+    
+@router.get("/game_room/owner/ressources/{room_id}")
+async def get_players_ressources(room_id: str):
+    players_ref = db.collection("game_room").document(room_id).collection("players")
+    players_docs = players_ref.get()
+    players_resources = {}
+    for doc in players_docs:
+        doc_dict = doc.to_dict()
+        if "resources" in doc_dict:
+            player_id = doc.id
+            resources = doc_dict["resources"]
+            players_resources[player_id] = resources
+    return players_resources
+
 
 @router.get("/game_room/token/{token_game_room}")
 async def get_room_by_token(token_game_room: str):

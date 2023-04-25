@@ -4,6 +4,7 @@ import math
 import random
 import json
 import asyncio
+# from routes.roomgame import get_room_by_id
 
 router = APIRouter()
 db = firebase.db
@@ -55,6 +56,9 @@ async def map_generate(size: int, game_room_id: str):
                     "diamonds": 10,
                     "energy": 10
                 },
+            "building": {
+                
+            }
         }
     )
 
@@ -116,7 +120,8 @@ async def map_generate(size: int, game_room_id: str):
                                 "name": player["name"],
                                 "number": player["number"],
                                 "resources": player["resources"],
-                                "player_map": player_map
+                                "player_map": player_map,
+                                "buildings" : player["buildings"]
                             })
 
 
@@ -170,12 +175,11 @@ async def websocket_endpoint(websocket: WebSocket):
     listener = None
 
     # Define a callback function that will be called when the map document is updated
-    async def on_snapshot_callback(query_snapshot, changes, read_time):
+    async def on_snapshot_callback(query_snapshot):
         if query_snapshot:
             # You can process multiple documents here if needed
             # Assume there's only one document in the map collection
             doc_snapshot = query_snapshot[0]
-            print("data sent")
             await websocket.send_json(doc_snapshot.to_dict())
         else:
             await websocket.send_json({"message": "Map not found"})
@@ -192,6 +196,8 @@ async def websocket_endpoint(websocket: WebSocket):
             if "request" in data_parsed and data_parsed["request"] == "/map":
                 game_room_id = data_parsed["GameRoomID"]
                 doc = db.collection("game_room").document(game_room_id)
+                # room_data = get_room_by_id(game_room_id)
+                # print(room_data)
 
                 # Detach the previous listener, if any
                 if listener:
