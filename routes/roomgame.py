@@ -15,18 +15,20 @@ room_ws_connections = {}
 async def create_room(player_name: str, token_game_room: str):
     new_room_ref = db.collection("game_room").document()
     new_room_ref.set({
-        "room_game_owner": player_name,
         "token_game_room": token_game_room,
         "players": [],
         "started": False,
+        "turn" : 0
     })
     room_id = new_room_ref.id
+    await join_room(player_name, token_game_room)
     return {
         "room_id": room_id,
         "owner_room_game": player_name,
         "token_game_room": token_game_room,
         "players": [],
         "started": False,
+        "turn" : 0
     }
 
 
@@ -41,8 +43,8 @@ async def join_room(player_name: str, token_game_room: str):
     game_room_doc = db.collection("game_room").document(room_id)
 
     players = game_room_doc.get().to_dict().get("players", [])
-    player_number = len(players) + 2
-    player_data = {"name": player_name, "number": player_number}
+    player_number = len(players) + 1
+    player_data = {"name": player_name, "number": player_number, "ready" : False}
     game_room_doc.update(
         {"players": firestore.ArrayUnion([player_data])})
 
@@ -128,7 +130,7 @@ async def get_game_room_players_list(room_id: str):
         }
     else:
         return {"message": "Room not found"}
-    
+
 @router.get("/game_room/owner/ressources/{room_id}")
 async def get_players_ressources(room_id: str):
     players_ref = db.collection("game_room").document(room_id).collection("players")

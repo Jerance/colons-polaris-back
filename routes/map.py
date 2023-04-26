@@ -46,7 +46,56 @@ async def update_player_data(request: Request):
         player_doc_ref = db.collection("game_room").document(data["game_room_id"]).collection("players").document(str(data["player_number"]))
 
         player_doc_ref.update({"player_map": data["updated_player_data"]})
-        print("success")
+        print("Player map updated")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/map")
+async def update_player_data(request: Request):
+    data = await request.json()
+
+    if not data["game_room_id"]:
+        raise HTTPException(status_code=400, detail="Missing game_room_id")
+
+    try:
+        # Get the map document
+        map_docs = db.collection("game_room").document(data["game_room_id"]).collection("map").get()
+        map_doc = map_docs[0].to_dict()
+
+        # Get the document reference and update it
+        map_doc_ref = map_docs[0].reference
+        map_doc_ref.update({"map": data["updated_map"]})
+        print("Map updated")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/game_room/players")
+async def update_player_data(request: Request):
+    data = await request.json()
+    if not data["game_room_id"] or not data["player_number"]:
+        raise HTTPException(status_code=400, detail="Missing game_room_id or player_number")
+
+    try:
+        player_doc_ref = db.collection("game_room").document(data["game_room_id"])
+
+        player_doc_data = player_doc_ref.get().to_dict()
+
+        allReady = True
+        for player in data["updated_players_data"]:
+            if not player["ready"] :
+                allReady = False
+
+        if allReady:
+            allNotReady = data["updated_players_data"]
+            for i in range(0, len(allNotReady)):
+                if allNotReady[i]["ready"] :
+                    allNotReady[i]["ready"]  = False
+
+            player_doc_ref.update({"turn": player_doc_data["turn"] + 1, "players": allNotReady})
+        else :
+            player_doc_ref.update({"players": data["updated_players_data"]})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -63,14 +112,6 @@ async def map_generate(size: int, game_room_id: str):
 
     players = game_room["players"]
 
-    players.append(
-        {
-            "name": game_room["room_game_owner"],
-            "number": 1,
-        }
-    )
-
-
     map = []
     for y in range(MAP_SIZE, -MAP_SIZE - 1, -1):
         for x in range(-MAP_SIZE, MAP_SIZE + 1):
@@ -80,6 +121,7 @@ async def map_generate(size: int, game_room_id: str):
                 random_number = random.randint(1, 100)
                 type = "void"
                 fill = "void"
+                moved = -1
                 asteroids = []
                 if x == 0 and y == 0:
                     type = "sun"
@@ -144,13 +186,24 @@ async def map_generate(size: int, game_room_id: str):
                                 "buildings" : {}
                             })
 
+                if(type == "base"):
+                    data = json.dumps({
+                        "type": type,
+                        "fill": fill,
+                        "coord": P2(x, y, (-x - y)),
+                        "asteroids": asteroids,
+                        "moved" : moved,
+                    })
 
-                map.append(json.dumps({
-                    "type": type,
-                    "fill": fill,
-                    "coord": P2(x, y, (-x - y)),
-                    "asteroids": asteroids
-                }))
+                else :
+                    data = json.dumps({
+                        "type": type,
+                        "fill": fill,
+                        "coord": P2(x, y, (-x - y)),
+                        "asteroids": asteroids
+                    })
+
+                map.append(data)
 
 
     map_doc_ref = db.collection("game_room").document(game_room_id).collection("map").document()
@@ -188,6 +241,7 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.send_json({"message": f"{type} not found"})
 
     def on_snapshot_sync(doc_snapshot, changes, read_time, type):
+        print("called for " + type)
         asyncio.run(on_snapshot_callback(doc_snapshot, type))
 
     def remove_listeners(game_room_id):

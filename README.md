@@ -17,7 +17,7 @@ Les modèles de données sont définis dans le dossier **models**. Nous utilison
 Nous utilisons SQLAlchemy pour la gestion de la base de données. Les modèles de données définis dans **models** sont utilisés pour créer les tables de la base de données.<br>
 Le dossier **database** contient les fichiers liés à la base de données :
 
-* **`.env`** : ce fichier est utilisé pour stocker les informations sensibles et confidentielles de la configuration de la base de données telles que : 
+* **`.env`** : ce fichier est utilisé pour stocker les informations sensibles et confidentielles de la configuration de la base de données telles que :
     * **le nom d'utilisateur**
     * **le mot de passe**
     * **l'hôte**
